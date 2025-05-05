@@ -136,10 +136,10 @@ mod tests {
     use crate::decode::{new_decoder, Decoder};
     use crate::types::byte32::tests::gen_bytes;
     use crate::types::i32::tests::random_usize;
+    use crate::types::test_utils::test_decode;
     use crate::types::{SecP256K1PubKey, UnlockScript};
     use crate::TempData;
     use std::vec;
-    use std::vec::Vec;
 
     use super::u256::tests::hex_to_bytes;
 
@@ -147,9 +147,10 @@ mod tests {
     fn test_decode_p2pkh() {
         for _ in 0..10 {
             let public_key = gen_bytes(33, 33);
-            test(0u8, public_key, |data: &[u8]| {
-                UnlockScript::P2PKH(SecP256K1PubKey::from_bytes(data.try_into().unwrap()))
-            })
+            let unlock_script = UnlockScript::P2PKH(SecP256K1PubKey::from_bytes(
+                public_key.clone().try_into().unwrap(),
+            ));
+            test_decode(0u8, public_key, unlock_script)
         }
     }
 
@@ -178,49 +179,19 @@ mod tests {
         }
     }
 
-    fn test(prefix: u8, data: Vec<u8>, builder: fn(&[u8]) -> UnlockScript) {
-        let mut temp_data = TempData::new();
-        let bytes = [&[prefix][..], &data[..]].concat();
-        let unlock_script = builder(&data);
-
-        {
-            let mut buffer = Buffer::new(&bytes, &mut temp_data);
-            let mut decoder = new_decoder::<UnlockScript>();
-            let result = decoder.decode(&mut buffer).unwrap();
-            assert_eq!(result, Some(&unlock_script));
-        }
-
-        let mut length: usize = 0;
-        let mut decoder = new_decoder::<UnlockScript>();
-
-        while length < bytes.len() {
-            let remain = bytes.len() - length;
-            let size = random_usize(0, remain);
-            let mut buffer = Buffer::new(&bytes[length..(length + size)], &mut temp_data);
-            length += size;
-
-            let result = decoder.decode(&mut buffer).unwrap();
-            if length == bytes.len() {
-                assert_eq!(result, Some(&unlock_script));
-                assert!(decoder.stage.is_complete())
-            } else {
-                assert_eq!(result, None);
-            }
-        }
-    }
-
     #[test]
     fn test_decode_polw() {
         for _ in 0..10 {
             let public_key = gen_bytes(33, 33);
-            test(4u8, public_key, |data: &[u8]| {
-                UnlockScript::PoLW(SecP256K1PubKey::from_bytes(data.try_into().unwrap()))
-            })
+            let unlock_script = UnlockScript::PoLW(SecP256K1PubKey::from_bytes(
+                public_key.clone().try_into().unwrap(),
+            ));
+            test_decode(4u8, public_key, unlock_script)
         }
     }
 
     #[test]
     fn test_decode_p2pk() {
-        test(5u8, vec![], |_data: &[u8]| UnlockScript::P2PK)
+        test_decode(5u8, vec![], UnlockScript::P2PK)
     }
 }

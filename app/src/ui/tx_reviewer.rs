@@ -15,10 +15,10 @@ use ledger_device_sdk::nbgl::Field;
 use ledger_device_sdk::ui::gadgets::Field;
 use ledger_device_sdk::NVMData;
 use utils::{
-    base58::ALPHABET,
+    base58::{base58_encode_inputs, ALPHABET},
     types::{
-        AssetOutput, Byte32, Hash, LockupScript, Token, TxInput, UnlockScript, UnsignedTx, I32,
-        U256,
+        lockup_script::P2PK, AssetOutput, Byte32, Hash, LockupScript, Token, TxInput, UnlockScript,
+        UnsignedTx, I32, U256,
     },
 };
 
@@ -289,6 +289,24 @@ impl TxReviewer {
         self.buffer.write(str_bytes)
     }
 
+    pub fn write_p2pk_address(&mut self, prefix: u8, p2pk: &P2PK) -> Result<usize, ErrorCode> {
+        let mut output = [0u8; 60];
+        let result = base58_encode_inputs(
+            &[
+                &[prefix],
+                &[p2pk.key.get_type()],
+                &p2pk.key.key_bytes(),
+                &p2pk.checksum.0,
+            ],
+            &mut output,
+        );
+        if let Some(str_bytes) = result {
+            self.buffer.write(str_bytes)
+        } else {
+            Err(ErrorCode::Overflow)
+        }
+    }
+
     fn get_token_metadata(&self, token_id: &Hash) -> Option<(TokenSymbol, u8)> {
         let token_size = self.token_metadata_length / TOKEN_METADATA_SIZE;
         if token_size == 0 {
@@ -321,6 +339,9 @@ impl TxReviewer {
                 self.write_address(output.lockup_script.get_type(), &hash.0)?
             }
             LockupScript::P2MPKH(_) => self.write_multi_sig(temp_data)?,
+            LockupScript::P2PK(p2pk) => {
+                self.write_p2pk_address(output.lockup_script.get_type(), &p2pk.inner)?
+            }
             _ => panic!(), // dead branch
         };
 
@@ -409,6 +430,7 @@ impl TxReviewer {
             UnlockScript::P2MPKH(_) => self.has_external_inputs = true,
             UnlockScript::P2SH(_) => self.has_external_inputs = true,
             UnlockScript::SameAsPrevious => (),
+            UnlockScript::P2PK => self.has_external_inputs = true,
             _ => panic!(),
         };
 

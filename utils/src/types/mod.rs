@@ -3,6 +3,7 @@ pub mod avector;
 pub mod bool;
 pub mod byte;
 pub mod byte32;
+mod checksum;
 mod compact_integer;
 pub mod hint;
 pub mod i256;
@@ -11,6 +12,7 @@ pub mod instr;
 pub mod lockup_script;
 pub mod method;
 pub mod public_key;
+pub mod public_key_like;
 pub mod script;
 pub mod timestamp;
 pub mod token;
@@ -42,7 +44,8 @@ pub use hint::Hint;
 pub use instr::Instr;
 pub use lockup_script::LockupScript;
 pub use method::Method;
-pub use public_key::SecP256K1PubKey;
+pub use public_key::{ED25519PubKey, SecP256K1PubKey, SecP256R1PubKey};
+pub use public_key_like::PublicKeyLike;
 pub use script::Script;
 pub use timestamp::TimeStamp;
 pub use token::Token;
@@ -58,5 +61,53 @@ fn reset(dest: &mut [u8]) {
     while index < dest.len() {
         dest[index] = b'0';
         index += 1;
+    }
+}
+
+#[cfg(test)]
+pub mod test_utils {
+    extern crate std;
+
+    use core::fmt::Debug;
+    use std::vec::Vec;
+
+    use crate::buffer::Buffer;
+    use crate::decode::RawDecoder;
+    use crate::decode::{new_decoder, Decoder};
+    use crate::types::i32::tests::random_usize;
+    use crate::TempData;
+
+    pub fn test_decode<T: Default + RawDecoder + PartialEq + Debug>(
+        prefix: u8,
+        data: Vec<u8>,
+        value: T,
+    ) {
+        let mut temp_data = TempData::new();
+        let bytes = [&[prefix][..], &data[..]].concat();
+
+        {
+            let mut buffer = Buffer::new(&bytes, &mut temp_data);
+            let mut decoder = new_decoder::<T>();
+            let result = decoder.decode(&mut buffer).unwrap();
+            assert_eq!(result, Some(&value));
+        }
+
+        let mut length: usize = 0;
+        let mut decoder = new_decoder::<T>();
+
+        while length < bytes.len() {
+            let remain = bytes.len() - length;
+            let size = random_usize(0, remain);
+            let mut buffer = Buffer::new(&bytes[length..(length + size)], &mut temp_data);
+            length += size;
+
+            let result = decoder.decode(&mut buffer).unwrap();
+            if length == bytes.len() {
+                assert_eq!(result, Some(&value));
+                assert!(decoder.stage.is_complete())
+            } else {
+                assert_eq!(result, None);
+            }
+        }
     }
 }
